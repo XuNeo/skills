@@ -8,39 +8,66 @@ license: Vibecoded
 
 Use tmux as a programmable terminal multiplexer for interactive work. Works on Linux and macOS with stock tmux; avoid custom config by using a private socket.
 
-## Quickstart (isolated socket)
+## Quickstart (use current tmux server)
 
 ```bash
-SOCKET_DIR=${TMPDIR:-/tmp}/claude-tmux-sockets  # well-known dir for all agent sockets
+SESSION=python-debug                           # descriptive names; avoid spaces
+tmux new -d -s "$SESSION"
+tmux send-keys -t "$SESSION".1 -- 'python3 -q' Enter
+tmux capture-pane -p -J -t "$SESSION".1 -S -200  # watch output
+tmux kill-session -t "$SESSION"                # clean up
+```
+
+If not running inside tmux (no `$TMUX` env var), use an isolated socket:
+
+```bash
+SOCKET_DIR=${TMPDIR:-/tmp}/claude-tmux-sockets
 mkdir -p "$SOCKET_DIR"
-SOCKET="$SOCKET_DIR/claude.sock"                # keep agent sessions separate from your personal tmux
-SESSION=claude-python                           # slug-like names; avoid spaces
-tmux -S "$SOCKET" new -d -s "$SESSION" -n shell
-tmux -S "$SOCKET" send-keys -t "$SESSION":0.0 -- 'python3 -q' Enter
-tmux -S "$SOCKET" capture-pane -p -J -t "$SESSION":0.0 -S -200  # watch output
-tmux -S "$SOCKET" kill-session -t "$SESSION"                   # clean up
+SOCKET="$SOCKET_DIR/claude.sock"
+SESSION=python-debug
+tmux -S "$SOCKET" new -d -s "$SESSION"
+tmux -S "$SOCKET" send-keys -t "$SESSION".1 -- 'python3 -q' Enter
+tmux -S "$SOCKET" capture-pane -p -J -t "$SESSION".1 -S -200
+tmux -S "$SOCKET" kill-session -t "$SESSION"
 ```
 
 After starting a session ALWAYS tell the user how to monitor the session by giving them a command to copy paste:
 
 ```
 To monitor this session yourself:
-  tmux -S "$SOCKET" attach -t claude-lldb
+  tmux attach -t python-debug
 
 Or to capture the output once:
-  tmux -S "$SOCKET" capture-pane -p -J -t claude-lldb:0.0 -S -200
+  tmux capture-pane -p -J -t python-debug.1 -S -200
+```
+
+If using an isolated socket (not in tmux), include `-S "$SOCKET"`:
+
+```
+To monitor this session yourself:
+  tmux -S "$SOCKET" attach -t python-debug
+
+Or to capture the output once:
+  tmux -S "$SOCKET" capture-pane -p -J -t python-debug.1 -S -200
 ```
 
 This must ALWAYS be printed right after a session was started and once again at the end of the tool loop.  But the earlier you send it, the happier the user will be.
 
 ## Socket convention
 
-- Agents MUST place tmux sockets under `CLAUDE_TMUX_SOCKET_DIR` (defaults to `${TMPDIR:-/tmp}/claude-tmux-sockets`) and use `tmux -S "$SOCKET"` so we can enumerate/clean them. Create the dir first: `mkdir -p "$CLAUDE_TMUX_SOCKET_DIR"`.
+- **Preferred**: When running inside tmux (check `$TMUX` env var), use the current tmux server without `-S` flag.
+- **Fallback**: If not in tmux, agents MUST place tmux sockets under `CLAUDE_TMUX_SOCKET_DIR` (defaults to `${TMPDIR:-/tmp}/claude-tmux-sockets`) and use `tmux -S "$SOCKET"` so we can enumerate/clean them. Create the dir first: `mkdir -p "$CLAUDE_TMUX_SOCKET_DIR"`.
 - Default socket path to use unless you must isolate further: `SOCKET="$CLAUDE_TMUX_SOCKET_DIR/claude.sock"`.
 
 ## Targeting panes and naming
 
-- Target format: `{session}:{window}.{pane}`, defaults to `:0.0` if omitted. Keep names short (e.g., `claude-py`, `claude-gdb`).
+- Target format: `{session}.{pane}`, defaults to `{session}.1` if omitted. Use descriptive names (e.g., `python-debug`, `gdb-session`, `build-test`).
+- **Session naming convention**: Use descriptive names that indicate the tool and purpose:
+  - `python-debug` - Python REPL for debugging/calculations
+  - `gdb-session` - GDB debugger for C/C++/embedded debugging
+  - `build-test` - Build process or test runner
+  - `shell-work` - General shell session for file operations
+- **Creating new panes**: `tmux split-window -h -t "$SESSION"` creates a new pane (pane 2). Always target the specific pane when sending commands: `tmux send-keys -t "$SESSION".2 -- 'command' Enter`
 - Use `-S "$SOCKET"` consistently to stay on the private socket path. If you need user config, drop `-f /dev/null`; otherwise `-f /dev/null` gives a clean config.
 - Inspect: `tmux -S "$SOCKET" list-sessions`, `tmux -S "$SOCKET" list-panes -a`.
 
@@ -51,8 +78,13 @@ This must ALWAYS be printed right after a session was started and once again at 
 
 ## Sending input safely
 
-- Prefer literal sends to avoid shell splitting: `tmux -L "$SOCKET" send-keys -t target -l -- "$cmd"`
-- When composing inline commands, use single quotes or ANSI C quoting to avoid expansion: `tmux ... send-keys -t target -- $'python3 -m http.server 8000'`.
+- **To send a command with Enter (newline)**: `tmux ... send-keys -t target -- 'your command' Enter`
+  - The `--` separates command from keys, and `Enter` sends a newline (not literal text)
+  - Always use single quotes around the command to prevent shell expansion and URL truncation
+- **To send literal text without interpretation**: `tmux ... send-keys -t target -l -- 'literal text'`
+  - Use `-l` flag to send text exactly as-is, useful for special characters
+- **To send text with embedded newline**: `tmux ... send-keys -t target -l -- $'text\nwith\nnewlines'`
+  - Use ANSI-C quoting with `-l` for embedded newlines
 - To send control keys: `tmux ... send-keys -t target C-c`, `C-d`, `C-z`, `Escape`, etc.
 
 ## Watching output
@@ -73,15 +105,15 @@ Some special rules for processes:
 
 - Use timed polling to avoid races with interactive tools. Example: wait for a Python prompt before sending code:
   ```bash
-  ./scripts/wait-for-text.sh -t "$SESSION":0.0 -p '^>>>' -T 15 -l 4000
+  ./scripts/wait-for-text.sh -t "$SESSION" -p '^>>>' -T 15 -l 4000
   ```
 - For long-running commands, poll for completion text (`"Type quit to exit"`, `"Program exited"`, etc.) before proceeding.
 
 ## Interactive tool recipes
 
-- **Python REPL**: `tmux ... send-keys -- 'python3 -q' Enter`; wait for `^>>>`; send code with `-l`; interrupt with `C-c`. Always with `PYTHON_BASIC_REPL`.
-- **gdb**: `tmux ... send-keys -- 'gdb --quiet ./a.out' Enter`; disable paging `tmux ... send-keys -- 'set pagination off' Enter`; break with `C-c`; issue `bt`, `info locals`, etc.; exit via `quit` then confirm `y`.
-- **Other TTY apps** (ipdb, psql, mysql, node, bash): same pattern—start the program, poll for its prompt, then send literal text and Enter.
+- **Python REPL**: `tmux ... send-keys -t "$SESSION".1 -- 'python3 -q' Enter`; wait for `^>>>`; send code with `-t "$SESSION".1 -- 'code' Enter`; interrupt with `C-c`. Always with `PYTHON_BASIC_REPL`.
+- **gdb**: `tmux ... send-keys -t "$SESSION".1 -- 'gdb --quiet ./a.out' Enter`; disable paging `tmux ... send-keys -t "$SESSION".1 -- 'set pagination off' Enter`; break with `C-c`; issue `bt`, `info locals`, etc.; exit via `quit` then confirm `y`.
+- **Other TTY apps** (ipdb, psql, mysql, node, bash): same pattern—start the program, poll for its prompt, then send command with `-t "$SESSION".1 -- 'command' Enter`.
 
 ## Cleanup
 
@@ -94,10 +126,10 @@ Some special rules for processes:
 `./scripts/wait-for-text.sh` polls a pane for a regex (or fixed string) with a timeout. Works on Linux/macOS with bash + tmux + grep.
 
 ```bash
-./scripts/wait-for-text.sh -t session:0.0 -p 'pattern' [-F] [-T 20] [-i 0.5] [-l 2000]
+./scripts/wait-for-text.sh -t session -p 'pattern' [-F] [-T 20] [-i 0.5] [-l 2000]
 ```
 
-- `-t`/`--target` pane target (required)
+- `-t`/`--target` pane target (required, format: `{session}.{pane}`)
 - `-p`/`--pattern` regex to match (required); add `-F` for fixed string
 - `-T` timeout seconds (integer, default 15)
 - `-i` poll interval seconds (default 0.5)
