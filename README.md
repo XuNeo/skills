@@ -6,7 +6,7 @@ A collection of custom agent skills and slash commands for Claude Code and MiCod
 
 ```
 .
-├── skills/           # Agent skills (SKILL.md files)
+├── skills/           # Agent skills (directories with SKILL.md files)
 ├── commands/         # Custom slash commands
 ├── README.md         # This file
 └── .gitignore        # Git ignore rules
@@ -14,7 +14,7 @@ A collection of custom agent skills and slash commands for Claude Code and MiCod
 
 ## Skills
 
-Skills are folders containing a `SKILL.md` file with instructions and metadata that Claude loads dynamically to improve performance on specialized tasks.
+Skills are directories containing a `SKILL.md` file with instructions and metadata that Claude loads dynamically to improve performance on specialized tasks. Scripts and supporting files should live inside the skill directory.
 
 ### Creating a New Skill
 
@@ -23,7 +23,12 @@ Skills are folders containing a `SKILL.md` file with instructions and metadata t
    mkdir skills/my-skill
    ```
 
-2. Create a `SKILL.md` file with YAML frontmatter:
+2. Create a `SKILL.md` file in that directory:
+   ```bash
+   touch skills/my-skill/SKILL.md
+   ```
+
+3. Add YAML frontmatter and instructions:
    ```markdown
    ---
    name: my-skill
@@ -36,7 +41,13 @@ Skills are folders containing a `SKILL.md` file with instructions and metadata t
    Detailed instructions for Claude...
    ```
 
-3. The skill will be automatically available in Claude Code and MiCode.
+4. Add any scripts or supporting files to the skill directory:
+   ```bash
+   # Example: Add a helper script
+   touch skills/my-skill/helper.sh
+   ```
+
+5. The skill will be automatically available in Claude Code and MiCode.
 
 ## Commands
 
