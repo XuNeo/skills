@@ -6,7 +6,7 @@ description: Fetch published Gerrit review comments (as JSON) for a given change
 ## Usage
 
 ```bash
-python scripts/get_comments.py --change "<change>" [--revision "<revision>"]
+python3 scripts/get_comments.py --change "<change>" [--revision "<revision>"]
 ```
 
 - `--change`: Full URL (e.g., `https://gerrit.example.com/c/repo/+/12345`), change number, or Change-Id
@@ -42,4 +42,4 @@ Error:
 
 ## Dependency
 
-`pip install python-gerrit-api`
+`pip3 install python-gerrit-api`
