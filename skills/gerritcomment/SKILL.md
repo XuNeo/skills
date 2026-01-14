@@ -158,10 +158,6 @@ git fetch {REMOTE} refs/changes/{XX}/{CHANGE_NUMBER}/{PATCH_SET_NUMBER}
 }
 ```
 
-## Notes
-
-- `get_comments.py` groups threads by file location. Replies posted to a different patch set may appear as separate threads in the output, even though Gerrit UI correctly shows them as part of the same thread. Trust Gerrit UI for verification.
-
 ## Dependency
 
 `pip3 install python-gerrit-api`

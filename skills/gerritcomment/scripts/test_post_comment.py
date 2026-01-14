@@ -14,8 +14,8 @@ from post_comment import (
     build_comment_input,
     format_success_output,
     format_error_output,
-    GerritError,
 )
+from gerrit_utils import GerritError
 
 
 # =============================================================================

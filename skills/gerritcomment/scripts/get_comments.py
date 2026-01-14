@@ -7,56 +7,87 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import sys
 from collections import defaultdict
 from datetime import datetime
-from urllib.parse import urlparse
 
 from gerrit import GerritClient
 from requests import HTTPError
 
-
-class GerritError(Exception):
-    """Base error for Gerrit operations."""
+from gerrit_utils import GerritError, parse_change_url, get_config
 
 
-def parse_change_url(url: str) -> tuple[str, str]:
-    """Parse Gerrit change URL, return (base_url, change_ref)."""
-    parsed = urlparse(url)
-    if parsed.scheme not in ("http", "https") or not parsed.netloc:
-        raise GerritError(f"Invalid Gerrit URL: {url}")
+def parse_gerrit_timestamp(value: str | None) -> datetime:
+    """Parse Gerrit timestamp string to datetime.
 
-    base_url = f"{parsed.scheme}://{parsed.netloc}"
-    parts = [p for p in parsed.path.split("/") if p]
+    Gerrit typically returns: "2013-02-26 15:40:43.986000000"
+    """
+    if not value:
+        return datetime.min
+    v = value.strip()
+    # Drop nanoseconds to microseconds for Python
+    if "." in v:
+        head, frac = v.split(".", 1)
+        frac = "".join(ch for ch in frac if ch.isdigit())
+        frac = (frac + "000000")[:6]
+        v = f"{head}.{frac}"
+        try:
+            return datetime.strptime(v, "%Y-%m-%d %H:%M:%S.%f")
+        except ValueError:
+            return datetime.min
+    try:
+        return datetime.strptime(v, "%Y-%m-%d %H:%M:%S")
+    except ValueError:
+        return datetime.min
 
-    if "+" in parts:
-        idx = parts.index("+")
-        if idx + 1 < len(parts):
-            return base_url, parts[idx + 1]
 
-    raise GerritError("URL must contain '+/<change_ref>'")
+def build_threads_by_reply_chain(raw_comments: dict, by_id: dict[str, dict]) -> dict[str, list[dict]]:
+    """Group comments into threads using in_reply_to chain.
 
+    This correctly handles cross-patchset replies by following the reply chain
+    rather than grouping by location.
 
-def get_config() -> tuple[str, str, str]:
-    """Load config from environment, return (base_url, username, password)."""
-    base_url = os.environ.get("GERRIT_BASE_URL", "").strip()
-    username = os.environ.get("GERRIT_USER", "").strip()
-    password = os.environ.get("GERRIT_HTTP_PASSWORD", "").strip()
+    Args:
+        raw_comments: Dict of {file_path: [comment, ...]} from Gerrit API.
+        by_id: Dict of {comment_id: comment} for quick lookup.
 
-    missing = []
-    if not base_url:
-        missing.append("GERRIT_BASE_URL")
-    if not username:
-        missing.append("GERRIT_USER")
-    if not password:
-        missing.append("GERRIT_HTTP_PASSWORD")
+    Returns:
+        Dict of {root_comment_id: [comments in thread]}.
+    """
+    threads_by_root: dict[str, list[dict]] = defaultdict(list)
 
-    if missing:
-        missing_str = ", ".join(missing)
-        raise GerritError(f"Missing environment variables: {missing_str}")
+    for path, items in raw_comments.items():
+        for c in items:
+            cid = c.get("id")
+            if not cid:
+                continue
 
-    return base_url, username, password
+            # Store file path in comment for later use
+            c["_file_path"] = path
+
+            # Walk up the reply chain to find root
+            root = cid
+            seen: set[str] = set()
+            cur = c
+            while True:
+                in_reply_to = cur.get("in_reply_to")
+                if not in_reply_to:
+                    break
+                if in_reply_to in seen:
+                    break
+                seen.add(in_reply_to)
+                parent = by_id.get(in_reply_to)
+                if not parent:
+                    # Orphan reply - parent might be in different patchset
+                    # Still use in_reply_to as root to group related comments
+                    root = in_reply_to
+                    break
+                root = in_reply_to
+                cur = parent
+
+            threads_by_root[root].append(c)
+
+    return threads_by_root
 
 
 def fetch_comments(base_url: str, change_ref: str, revision: str | None = None,
@@ -103,132 +134,72 @@ def fetch_comments(base_url: str, change_ref: str, revision: str | None = None,
     except Exception as e:
         raise GerritError(str(e))
 
-    def _parse_updated(value: str | None) -> datetime:
-        # Gerrit typically returns: "2013-02-26 15:40:43.986000000"
-        if not value:
-            return datetime.min
-        v = value.strip()
-        # Drop nanoseconds to microseconds for Python
-        if "." in v:
-            head, frac = v.split(".", 1)
-            frac = "".join(ch for ch in frac if ch.isdigit())
-            frac = (frac + "000000")[:6]
-            v = f"{head}.{frac}"
-            try:
-                return datetime.strptime(v, "%Y-%m-%d %H:%M:%S.%f")
-            except ValueError:
-                return datetime.min
-        try:
-            return datetime.strptime(v, "%Y-%m-%d %H:%M:%S")
-        except ValueError:
-            return datetime.min
-
-    def _location_key(path: str, c: dict) -> tuple:
-        # Thread location is defined by file + (range|line|file-level)
-        rng = c.get("range")
-        if rng:
-            return (
-                path or "",
-                "range",
-                rng.get("start_line"),
-                rng.get("start_character"),
-                rng.get("end_line"),
-                rng.get("end_character"),
-            )
-        line = c.get("line")
-        if line is not None:
-            return (path or "", "line", int(line))
-        return (path or "", "file")
-
-    # Build index of all comments by id and group by location
+    # Build index of all comments by id
     by_id: dict[str, dict] = {}
-    by_location: dict[tuple, list[dict]] = defaultdict(list)
     for path, items in raw.items():
         for c in items:
             cid = c.get("id")
             if cid:
                 by_id[cid] = c
-            by_location[_location_key(path, c)].append(c)
+                c["_file_path"] = path
+
+    # Group comments into threads by reply chain
+    threads_by_root = build_threads_by_reply_chain(raw, by_id)
 
     threads: list[dict] = []
-    for loc_key, items in by_location.items():
-        # Group into threads by root comment id (walk in_reply_to chain)
-        threads_by_root: dict[str, list[dict]] = defaultdict(list)
-        for c in items:
-            cid = c.get("id")
-            if not cid:
-                continue
-            root = cid
-            seen: set[str] = set()
-            cur = c
-            while True:
-                in_reply_to = cur.get("in_reply_to")
-                if not in_reply_to:
-                    break
-                if in_reply_to in seen:
-                    break
-                seen.add(in_reply_to)
-                parent = by_id.get(in_reply_to)
-                if not parent:
-                    # Orphan reply; treat itself as root
-                    break
-                root = in_reply_to
-                cur = parent
-            threads_by_root[root].append(c)
+    for root_id, t_items in threads_by_root.items():
+        # Sort comments in thread by updated time (chronological)
+        t_items_sorted = sorted(
+            t_items,
+            key=lambda x: parse_gerrit_timestamp(x.get("updated")),
+        )
+        last = t_items_sorted[-1] if t_items_sorted else None
+        thread_unresolved = bool(last.get("unresolved")) if last else False
 
-        for root_id, t_items in threads_by_root.items():
-            # Sort comments in thread by updated time (chronological)
-            t_items_sorted = sorted(
-                t_items,
-                key=lambda x: _parse_updated(x.get("updated")),
+        if unresolved_only and not thread_unresolved:
+            continue
+
+        # Use root comment for location metadata
+        root_comment = by_id.get(root_id) or (
+            t_items_sorted[0] if t_items_sorted else {}
+        )
+        file_path = root_comment.get("_file_path")
+        thread_range = root_comment.get("range")
+        thread_line = root_comment.get("line")
+
+        comments_out = []
+        for c in t_items_sorted:
+            author_info = c.get("author", {})
+            author_name = (
+                author_info.get("display_name")
+                or author_info.get("name")
+                or "Unknown"
             )
-            last = t_items_sorted[-1] if t_items_sorted else None
-            thread_unresolved = bool(last.get("unresolved")) if last else False
-
-            if unresolved_only and not thread_unresolved:
-                continue
-
-            # Use root comment for location metadata
-            root_comment = by_id.get(root_id) or (
-                t_items_sorted[0] if t_items_sorted else {}
-            )
-            file_path = loc_key[0] or None
-            thread_range = root_comment.get("range")
-            thread_line = root_comment.get("line")
-
-            comments_out = []
-            for c in t_items_sorted:
-                author_info = c.get("author", {})
-                author_name = (
-                    author_info.get("display_name")
-                    or author_info.get("name")
-                    or "Unknown"
-                )
-                comments_out.append(
-                    {
-                        "id": c.get("id"),
-                        "in_reply_to": c.get("in_reply_to"),
-                        "patch_set": c.get("patch_set"),
-                        "author": author_name,
-                        "message": (c.get("message") or "").strip(),
-                        "updated": c.get("updated"),
-                        "unresolved": bool(c.get("unresolved")),
-                    }
-                )
-
-            threads.append(
+            comments_out.append(
                 {
-                    "file": file_path,
-                    "range": thread_range,
-                    "line": thread_line,
-                    "unresolved": thread_unresolved,
-                    "updated": last.get("updated") if last else None,
-                    "comments": comments_out,
+                    "id": c.get("id"),
+                    "in_reply_to": c.get("in_reply_to"),
+                    "patch_set": c.get("patch_set"),
+                    "author": author_name,
+                    "message": (c.get("message") or "").strip(),
+                    "updated": c.get("updated"),
+                    "unresolved": bool(c.get("unresolved")),
                 }
             )
 
+        threads.append(
+            {
+                "file": file_path,
+                "range": thread_range,
+                "line": thread_line,
+                "unresolved": thread_unresolved,
+                "updated": last.get("updated") if last else None,
+                "comments": comments_out,
+            }
+        )
+
     # Sort threads by latest comment time (newest first)
-    threads.sort(key=lambda t: _parse_updated(t.get("updated")), reverse=True)
+    threads.sort(key=lambda t: parse_gerrit_timestamp(t.get("updated")), reverse=True)
     return {"threads": threads, "latest_patchset": latest_patchset}
 
 
