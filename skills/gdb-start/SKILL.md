@@ -87,6 +87,22 @@ mcp_gdbmcp_gdb_command(session_id=sid, command="help user-defined")
 
 **IMPORTANT**: `.bin` files are memory dumps, not just binary files. When you see `.bin` files in a crash directory, they ARE dump files that can be loaded.
 
+**Special case - SIM platform:**
+
+For NuttX SIM (simulator) platform, crash context is not in memory dump. Use GDB's native coredump loading:
+
+```python
+# SIM platform: Load coredump directly with GDB (not nxstub)
+mcp_gdbmcp_gdb_command(session_id=sid, command="core-file ./core.dump")
+
+# Standard GDB commands work for crash analysis
+mcp_gdbmcp_gdb_command(session_id=sid, command="info threads")
+mcp_gdbmcp_gdb_command(session_id=sid, command="bt")
+
+# Only use nxstub when you need NuttX-specific thread state
+mcp_gdbmcp_gdb_command(session_id=sid, command="target nxstub ./core.dump")
+```
+
 **Auto-detection (recommended):**
 ```python
 mcp_gdbmcp_gdb_command(session_id=sid, command="target nxstub ./core.dump")
