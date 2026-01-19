@@ -1,332 +1,400 @@
 ---
 name: vela-run
-description: Run Vela RTOS targets (QEMU variants, simulator, goldfish) with automatic detection and appropriate launch commands
+description: Run NuttX and Vela RTOS targets on QEMU, FVP, goldfish emulator, and simulator. Supports ARM Cortex-M (MPS3-AN547), ARMv7-A, ARMv8-A, ARMv8-R FVP, goldfish (Android emulator), and native simulator with automatic detection and GDB debugging.
 license: MIT
+compatibility: Requires qemu-system-arm, qemu-system-aarch64, or Android emulator. FVP requires ARM FVP_BaseR_AEMv8R tool.
 ---
 
 # Vela Run Skill
 
-Run Vela RTOS builds on various targets including QEMU variants, simulator, and goldfish emulator.
+Run NuttX and Vela RTOS builds on various emulation targets.
 
 ## Target Types
 
-Vela supports several runtime targets:
+| Target | Binary | Machine | Use Case |
+|--------|--------|---------|----------|
+| **mps3-an547** | qemu-system-arm | MPS3-AN547 | ARM Cortex-M55 (ARMv8.1-M) |
+| **qemu-armv7a** | qemu-system-arm | virt | ARM Cortex-A7 (ARMv7-A) |
+| **qemu-armv8a** | qemu-system-aarch64 | virt | ARM Cortex-A53 (ARMv8-A), SMP |
+| **fvp-armv8r** | FVP_BaseR_AEMv8R | FVP | ARM Cortex-R82 (ARMv8-R), SMP |
+| **goldfish** | emulator.sh | Android Emulator | Vela goldfish (ARM32/ARM64) |
+| **simulator** | native binary | Host | Native simulation |
 
-1. **QEMU ARM Cortex-M (MPS-AN547)**: ARM Cortex-M on QEMU MPS3-AN547 machine
-2. **QEMU ARMv7-A**: ARM Cortex-A7 on QEMU virt machine
-3. **QEMU ARM64 (AArch64)**: ARM Cortex-A53 on QEMU virt machine with SMP support
-4. **Simulator**: Native host binary built with vendor/sim/ or nuttx/boards/sim
-5. **Goldfish**: Android emulator using emulator.sh script
-
-## Usage
-
-Use this skill by mentioning it:
-
-"Use the vela-run skill to run the qemu-armv8a build on port 1234"
-
-"Use the vela-run skill to run the simulator"
-
-"Use the vela-run skill to run goldfish with gdb on port 1129"
-
-## Run Workflow
-
-### Step 1: Detect Target Type
-
-Analyze the build output to determine which target type to run:
-
-```bash
-# Read build output directory from vela-build
-OUTDIR=$(cat .vela_build_outdir 2>/dev/null || echo "build")
-
-# Detect target from directory name or user input
-# - Check for sim, qemu, goldfish keywords
-# - Ask user if unclear
-```
-
-### Step 2: Locate Binary
-
-Find the appropriate ELF or binary file:
-
-```bash
-# Common binary names
-# - nuttx (ELF file)
-# - nuttx.bin (raw binary)
-# - For goldfish: entire output directory
-
-# Search in output directory
-ELF="$OUTDIR/nuttx"
-if [[ ! -f "$ELF" ]]; then
-    echo "Binary not found in $OUTDIR"
-    exit 1
-fi
-```
-
-### Step 3: Run QEMU ARM Cortex-M (MPS-AN547)
-
-```bash
-qemu-system-arm -M mps3-an547 -m 2G -nographic -kernel {elf} -gdb tcp::{gdbport}
-```
-
-**Parameters:**
-- `{elf}`: Path to ELF file (e.g., `build/nuttx`)
-- `{gdbport}`: GDB debugging port (default: 1234)
-
-**Example:**
-```bash
-qemu-system-arm -M mps3-an547 -m 2G -nographic -kernel build/nuttx -gdb tcp::1234
-```
-
-### Step 4: Run QEMU ARMv7-A
-
-```bash
-qemu-system-arm -cpu cortex-a7 -nographic -machine virt,virtualization=off,gic-version=2 -net none -chardev stdio,id=con,mux=on -serial chardev:con -mon chardev=con,mode=readline -kernel {elf} -gdb tcp::{gdbport}
-```
-
-**Parameters:**
-- `{elf}`: Path to ELF file
-- `{gdbport}`: GDB debugging port (default: 1234)
-
-**Example:**
-```bash
-qemu-system-arm -cpu cortex-a7 -nographic -machine virt,virtualization=off,gic-version=2 -net none -chardev stdio,id=con,mux=on -serial chardev:con -mon chardev=con,mode=readline -kernel build/nuttx -gdb tcp::1234
-```
-
-### Step 5: Run QEMU ARM64 (AArch64)
-
-```bash
-qemu-system-aarch64 -smp {cpus} -cpu cortex-a53 -semihosting -nographic -machine virt,virtualization=on,gic-version=3 -net none -chardev stdio,id=con,mux=on -serial chardev:con -mon chardev=con,mode=readline -kernel {elf} -gdb tcp::{gdbport}
-```
-
-**Parameters:**
-- `{cpus}`: Number of CPUs for SMP (default: 4, can be 1 if user specifies)
-- `{elf}`: Path to ELF file
-- `{gdbport}`: GDB debugging port (default: 1234)
-
-**Example:**
-```bash
-qemu-system-aarch64 -smp 4 -cpu cortex-a53 -semihosting -nographic -machine virt,virtualization=on,gic-version=3 -net none -chardev stdio,id=con,mux=on -serial chardev:con -mon chardev=con,mode=readline -kernel build/nuttx -gdb tcp::1234
-```
-
-### Step 6: Run Simulator
-
-The simulator is a native host binary that can be executed directly.
-
-**IMPORTANT**: Use the executor skill to run the simulator to capture stdio:
-
-```bash
-# Using executor skill (recommended)
-executor_start(command="{path_to_binary}", working_dir="{cwd}")
-executor_read_output(tail_lines=50)
-# ... interact with simulator ...
-executor_stop()
-```
-
-**Alternative**: Run directly in background:
-
-```bash
-# Direct execution (stdio goes to terminal)
-{path_to_binary}
-```
-
-**Parameters:**
-- `{path_to_binary}`: Path to simulator binary (e.g., `build/nuttx`, `out/nuttx`)
-
-**Example:**
-```bash
-# With executor
-executor_start(command="build/nuttx", working_dir="/path/to/vela")
-
-# Or direct
-./build/nuttx
-```
-
-### Step 7: Run Goldfish
-
-Goldfish uses the `emulator.sh` script in the project root:
-
-```bash
-./emulator.sh {build_output_path} -qemu -gdb tcp::{gdbport} [additional_qemu_args]
-```
-
-**Parameters:**
-- `{build_output_path}`: Path to goldfish build output (e.g., `out/qemu_vela_goldfish-armeabi-v7a-ap`)
-- `{gdbport}`: GDB debugging port (default: 1129)
-- `[additional_qemu_args]`: Optional additional arguments passed to QEMU after `-qemu`
-
-**Example:**
-```bash
-./emulator.sh out/qemu_vela_goldfish-armeabi-v7a-ap -qemu -gdb tcp::1129
-```
-
-## Target Detection Logic
-
-### From Build Output Directory
-
-```bash
-OUTDIR=$(cat .vela_build_outdir 2>/dev/null || echo "build")
-
-# Check directory name for hints
-if [[ "$OUTDIR" == *"sim"* ]] || [[ "$OUTDIR" == *"simulator"* ]]; then
-    TARGET_TYPE="sim"
-elif [[ "$OUTDIR" == *"goldfish"* ]]; then
-    TARGET_TYPE="goldfish"
-elif [[ "$OUTDIR" == *"qemu"* ]]; then
-    # Further detect QEMU variant from board name
-    TARGET_TYPE="qemu"
-else
-    # Ask user
-    TARGET_TYPE="unknown"
-fi
-```
-
-### QEMU Variant Detection
-
-```bash
-# Check board name or config for architecture hints
-# - mps3, mps-an547, cortex-m -> MPS-AN547
-# - v7a, cortex-a7, armv7 -> ARMv7-A
-# - v8a, armv8a, aarch64, arm64, cortex-a53 -> ARM64
-```
-
-### From User Input
-
-Ask user to specify:
-- Target type: qemu-m, qemu-v7a, qemu-arm64, sim, goldfish
-- GDB port (optional, defaults provided)
-- SMP count for ARM64 (optional, default 4)
-
-## Default Parameters
-
-- **GDB Port**:
-  - QEMU: 1234
-  - Goldfish: 1129
-- **SMP Count (ARM64)**: 4
-- **Output Directory**: Read from `.vela_build_outdir`, fallback to `build/`
-
-## Error Handling
-
-- **Binary not found**: Search for `nuttx` in output directory, suggest running vela-build first
-- **Unknown target**: Ask user to specify target type
-- **Missing emulator.sh**: Check project root, inform user if not found
-- **QEMU not installed**: Check for `qemu-system-arm` and `qemu-system-aarch64`, suggest installation
-
-## Example Usage
-
-### QEMU ARM64 with Custom Port
+## Usage Examples
 
 ```
-Use the vela-run skill to run qemu-arm64 with gdb on port 5678
-```
-
-**Expected behavior:**
-1. Read output directory from `.vela_build_outdir`
-2. Find `nuttx` ELF in output directory
-3. Run: `qemu-system-aarch64 -smp 4 ... -kernel {elf} -gdb tcp::5678`
-
-### Simulator with Executor
-
-```
+Use the vela-run skill to run qemu-armv8a with gdb on port 1234
+Use the vela-run skill to run mps3-an547
+Use the vela-run skill to run goldfish arm32
+Use the vela-run skill to run fvp-armv8r with smp
 Use the vela-run skill to run the simulator
 ```
 
-**Expected behavior:**
-1. Read output directory from `.vela_build_outdir`
-2. Find simulator binary (e.g., `build/nuttx`)
-3. Use executor skill to run binary and capture stdio
-4. Display output to user
+## QEMU Common Parameters
 
-### Goldfish with Default Port
+All QEMU targets share these parameters:
 
+### Debug Parameters
+
+| Parameter | Description |
+|-----------|-------------|
+| `-S` | Freeze CPU at startup, wait for GDB `continue` |
+| `-s` | Shorthand for `-gdb tcp::1234` |
+| `-gdb tcp::{port}` | Start GDB server on specified port |
+
+### Display & I/O Parameters
+
+| Parameter | Description |
+|-----------|-------------|
+| `-nographic` | Disable graphical output, use serial console |
+| `-chardev stdio,id=con,mux=on` | Create multiplexed stdio character device |
+| `-serial chardev:con` | Connect serial port to chardev |
+| `-mon chardev=con,mode=readline` | QEMU monitor on same console (Ctrl-a c to switch) |
+
+### Machine Parameters
+
+| Parameter | Description |
+|-----------|-------------|
+| `-M {machine}` | Machine type (mps3-an547, virt, etc.) |
+| `-machine virt,...` | Virtual machine with options |
+| `-cpu {model}` | CPU model (cortex-a7, cortex-a53, etc.) |
+| `-smp {n}` | Number of CPU cores for SMP |
+| `-m {size}` | Memory size (e.g., 2G) |
+
+### Machine Options (for `-machine virt`)
+
+| Option | Description |
+|--------|-------------|
+| `virtualization=on/off` | Enable/disable EL2 virtualization |
+| `gic-version=2/3` | GIC version (2 for GICv2, 3 for GICv3) |
+| `highmem=off` | Disable high memory (required for ivshmem) |
+
+### Network Parameters
+
+| Parameter | Description |
+|-----------|-------------|
+| `-net none` | Disable networking |
+| `-netdev user,id=u1,...` | User-mode networking with port forwarding |
+| `-device virtio-net-device,...` | Virtio network device |
+
+### Filesystem Parameters
+
+| Parameter | Description |
+|-----------|-------------|
+| `-fsdev local,...` | 9pfs filesystem device |
+| `-device virtio-9p-device,...` | Virtio 9p device for host sharing |
+| `-semihosting` | Enable ARM semihosting (hostfs access) |
+
+### Device Loading
+
+| Parameter | Description |
+|-----------|-------------|
+| `-kernel {file}` | Kernel/firmware ELF or binary |
+| `-device loader,file={img},addr={addr}` | Load file at specific address |
+
+## Run Commands
+
+### MPS3-AN547 (ARM Cortex-M)
+
+Basic run:
+```bash
+qemu-system-arm -M mps3-an547 -nographic -kernel nuttx.bin
 ```
-Use the vela-run skill to run goldfish
+
+With GDB:
+```bash
+qemu-system-arm -M mps3-an547 -m 2G -nographic -kernel nuttx.bin -S -s
+# Or custom port:
+qemu-system-arm -M mps3-an547 -m 2G -nographic -kernel nuttx.bin -gdb tcp::1128
 ```
 
-**Expected behavior:**
-1. Read output directory from `.vela_build_outdir`
-2. Detect goldfish build path (e.g., `out/qemu_vela_goldfish-armeabi-v7a-ap`)
-3. Run: `./emulator.sh {path} -qemu -gdb tcp::1129`
-
-### QEMU ARMv7-A with SMP 1
-
-```
-Use the vela-run skill to run qemu-v7a on port 1234
+With ROMFS (for PIC apps):
+```bash
+qemu-system-arm -M mps3-an547 -m 2G -nographic \
+  -kernel nuttx.bin \
+  -device loader,file=romfs.img,addr=0x60000000
 ```
 
-**Expected behavior:**
-1. Read output directory
-2. Find ELF file
-3. Run: `qemu-system-arm -cpu cortex-a7 ... -kernel {elf} -gdb tcp::1234`
+**Note (QEMU 9.20+):** UART interrupts swapped, configure:
+```
+CONFIG_CMSDK_UART0_TX_IRQ=50
+CONFIG_CMSDK_UART0_RX_IRQ=49
+```
 
-## Integration with Other Skills
+### QEMU ARMv7-A
 
-### vela-build Integration
+Basic run:
+```bash
+qemu-system-arm -cpu cortex-a7 -nographic \
+  -machine virt,virtualization=off,gic-version=2 \
+  -net none \
+  -chardev stdio,id=con,mux=on \
+  -serial chardev:con \
+  -mon chardev=con,mode=readline \
+  -kernel nuttx
+```
 
-This skill reads `.vela_build_outdir` created by vela-build to locate binaries:
+With GDB (paused):
+```bash
+qemu-system-arm -cpu cortex-a7 -nographic \
+  -machine virt,virtualization=off,gic-version=2 \
+  -net none \
+  -chardev stdio,id=con,mux=on \
+  -serial chardev:con \
+  -mon chardev=con,mode=readline \
+  -kernel nuttx \
+  -S -s
+```
+
+With ivshmem (OpenAMP):
+```bash
+qemu-system-arm -cpu cortex-a7 -nographic \
+  -machine virt,highmem=off \
+  -object memory-backend-file,id=shmmem-shmem0,mem-path=/dev/shm/ivshmem0,size=4194304,share=yes \
+  -device ivshmem-plain,id=shmem0,memdev=shmmem-shmem0,addr=0xb \
+  -kernel nuttx
+```
+
+### QEMU ARMv8-A (AArch64)
+
+Single core (GICv3):
+```bash
+qemu-system-aarch64 -cpu cortex-a53 -nographic \
+  -machine virt,virtualization=on,gic-version=3 \
+  -net none \
+  -chardev stdio,id=con,mux=on \
+  -serial chardev:con \
+  -mon chardev=con,mode=readline \
+  -kernel nuttx
+```
+
+SMP (4 cores):
+```bash
+qemu-system-aarch64 -cpu cortex-a53 -smp 4 -nographic \
+  -machine virt,virtualization=on,gic-version=3 \
+  -net none \
+  -chardev stdio,id=con,mux=on \
+  -serial chardev:con \
+  -mon chardev=con,mode=readline \
+  -kernel nuttx
+```
+
+With GDB (paused):
+```bash
+qemu-system-aarch64 -cpu cortex-a53 -smp 4 -nographic \
+  -machine virt,virtualization=on,gic-version=3 \
+  -net none \
+  -chardev stdio,id=con,mux=on \
+  -serial chardev:con \
+  -mon chardev=con,mode=readline \
+  -kernel nuttx \
+  -S -s
+```
+
+With semihosting:
+```bash
+qemu-system-aarch64 -cpu cortex-a53 -smp 4 -semihosting -nographic \
+  -machine virt,virtualization=on,gic-version=3 \
+  -net none \
+  -chardev stdio,id=con,mux=on \
+  -serial chardev:con \
+  -mon chardev=con,mode=readline \
+  -kernel nuttx
+```
+
+GICv2 variant:
+```bash
+qemu-system-aarch64 -cpu cortex-a53 -nographic \
+  -machine virt,virtualization=off,gic-version=2 \
+  -net none \
+  -chardev stdio,id=con,mux=on \
+  -serial chardev:con \
+  -mon chardev=con,mode=readline \
+  -kernel nuttx
+```
+
+With virtio networking:
+```bash
+qemu-system-aarch64 -cpu cortex-a53 -smp 4 -nographic \
+  -machine virt,virtualization=on,gic-version=3 \
+  -chardev stdio,id=con,mux=on -serial chardev:con \
+  -global virtio-mmio.force-legacy=false \
+  -netdev user,id=u1,hostfwd=tcp:127.0.0.1:10023-10.0.2.15:23 \
+  -device virtio-net-device,netdev=u1,bus=virtio-mmio-bus.0 \
+  -mon chardev=con,mode=readline \
+  -kernel nuttx
+```
+
+With 9pfs (host filesystem sharing):
+```bash
+qemu-system-aarch64 -cpu cortex-a53 -nographic \
+  -machine virt,virtualization=on,gic-version=3 \
+  -fsdev local,security_model=none,id=fsdev0,path=/path/to/share \
+  -device virtio-9p-device,id=fs0,fsdev=fsdev0,mount_tag=host \
+  -chardev stdio,id=con,mux=on -serial chardev:con \
+  -mon chardev=con,mode=readline \
+  -kernel nuttx
+```
+
+### FVP ARMv8-R (Cortex-R82)
+
+**Prerequisites:** Download FVP from [ARM Ecosystem Models](https://developer.arm.com/downloads/-/arm-ecosystem-models)
+
+Single core:
+```bash
+FVP_BaseR_AEMv8R \
+  -f boards/arm64/fvp-v8r/fvp-armv8r/scripts/fvp_cfg.txt \
+  -a ./nuttx
+```
+
+SMP:
+```bash
+FVP_BaseR_AEMv8R \
+  -f boards/arm64/fvp-v8r/fvp-armv8r/scripts/fvp_cfg_smp.txt \
+  -a ./nuttx
+```
+
+**Serial ports:** FVP exposes 4 UART ports on localhost:
+- terminal_0: port 5000
+- terminal_1: port 5001 (default console)
+- terminal_2: port 5002
+- terminal_3: port 5003
+
+Connect to console:
+```bash
+telnet localhost 5001
+```
+
+### Goldfish (Vela Android Emulator)
+
+ARM32:
+```bash
+./emulator.sh out/qemu_vela_goldfish-armeabi-v7a-ap/
+```
+
+ARM64:
+```bash
+./emulator.sh out/qemu_vela_goldfish-arm64-v8a-ap/
+```
+
+No window (terminal only):
+```bash
+./emulator.sh out/qemu_vela_goldfish-armeabi-v7a-ap/ -no-window
+```
+
+With GDB (paused):
+```bash
+./emulator.sh out/qemu_vela_goldfish-armeabi-v7a-ap/ -qemu -S -s
+```
+
+With semihosting (for hostfs):
+```bash
+./emulator.sh out/qemu_vela_goldfish-armeabi-v7a-ap/ -qemu -semihosting
+```
+
+With 9pfs:
+```bash
+./emulator.sh out/qemu_vela_goldfish-armeabi-v7a-ap/ \
+  -qemu \
+  -fsdev local,security_model=passthrough,id=fsdev0,path=/path/to/share \
+  -device virtio-9p-pci,id=fs0,fsdev=fsdev0,mount_tag=hostshare
+```
+
+Persistent instance (-keep):
+```bash
+./emulator.sh vela -keep -no-window
+```
+
+### Simulator (Native)
+
+Direct execution:
+```bash
+./build/nuttx
+```
+
+## Skill Integration
+
+### Interactive Sessions
+
+For interactive work with QEMU, simulator, or GDB where user needs to interact with the console:
+
+**Use the tmux skill** to start and manage interactive sessions. This allows:
+- Running QEMU/simulator in background
+- Sending commands and capturing output
+- User can attach to monitor the session
+
+### GDB Debugging
+
+For debugging NuttX with GDB:
+
+**Use the gdb-start skill** to connect GDB to QEMU's GDB server. Start QEMU with `-S -s` flags first.
+
+GDB toolchains:
+- arm: `gdb-multiarch`
+- xtensa: `xtensa-esp32s3-elf-gdb`
+- Vela prebuilt: `./prebuilts/gcc/linux/arm[64]/bin/`
+
+Enable debug symbols in defconfig:
+```
+CONFIG_DEBUG_SYMBOLS=y
+```
+
+### Automated Tasks
+
+For fully automated tasks without user interaction:
+
+**Use the executor skill** to run and control processes programmatically.
+
+## Target Detection
+
+### From Build Output
 
 ```bash
-OUTDIR=$(cat .vela_build_outdir)
-ELF="$OUTDIR/nuttx"
+OUTDIR=$(cat .vela_build_outdir 2>/dev/null || echo "build")
+
+# Detect from directory name
+case "$OUTDIR" in
+  *sim*|*simulator*) TARGET="simulator" ;;
+  *goldfish*) TARGET="goldfish" ;;
+  *mps3*|*an547*) TARGET="mps3-an547" ;;
+  *armv7a*|*v7a*) TARGET="qemu-armv7a" ;;
+  *armv8a*|*v8a*|*arm64*|*aarch64*) TARGET="qemu-armv8a" ;;
+  *fvp*|*armv8r*) TARGET="fvp-armv8r" ;;
+  *) TARGET="unknown" ;;
+esac
 ```
 
-### executor Skill Integration
+### Binary Location
 
-For simulator targets, use executor skill to manage the process:
+| Build Type | Binary Path |
+|------------|-------------|
+| CMake | `build/nuttx` or `build/nuttx.bin` |
+| Makefile | `nuttx/nuttx` |
+| Vela | `out/<config>/nuttx` |
+| Goldfish | `out/qemu_vela_goldfish-*/` (directory) |
 
-```bash
-# Start simulator
-executor_start(command="$OUTDIR/nuttx")
+## Default Parameters
 
-# Read output
-executor_read_output(tail_lines=100)
+| Parameter | Default |
+|-----------|---------|
+| GDB Port (QEMU `-s`) | 1234 |
+| GDB Port (Goldfish) | 1234 |
+| SMP Cores (ARM64) | 4 |
+| FVP Console Port | 5001 |
 
-# Stop simulator
-executor_stop()
-```
+## Error Handling
 
-### Debugging Workflow
+| Error | Solution |
+|-------|----------|
+| Binary not found | Run vela-build first, check `.vela_build_outdir` |
+| QEMU not installed | `apt install qemu-system-arm qemu-system-aarch64` |
+| FVP not found | Download from ARM Ecosystem Models |
+| emulator.sh missing | Check Vela project root |
+| GDB connection refused | Verify QEMU started with `-s` or `-gdb tcp::port` |
 
-After starting QEMU with `-gdb tcp::{port}`, user can attach GDB:
+## References
 
-```bash
-# In another terminal
-gdb {elf}
-(gdb) target remote :{port}
-(gdb) continue
-```
-
-## Best Practices
-
-- Always read `.vela_build_outdir` to locate binaries
-- Use default GDB ports unless user specifies
-- For simulator, prefer executor skill to capture stdio
-- Provide clear instructions for GDB attachment
-- Check binary exists before launching
-- Ask user for target type if detection is ambiguous
-
-## Common Scenarios
-
-### Quick Test Run (No Debug)
-
-For quick testing without debugging, omit GDB port:
-
-```bash
-# QEMU without GDB
-qemu-system-aarch64 -smp 4 -cpu cortex-a53 -semihosting -nographic -machine virt,virtualization=on,gic-version=3 -net none -chardev stdio,id=con,mux=on -serial chardev:con -mon chardev=con,mode=readline -kernel build/nuttx
-```
-
-### Debug Session Setup
-
-1. Start QEMU with GDB port
-2. In separate terminal, attach GDB
-3. Set breakpoints and debug
-
-### Simulator Interactive Session
-
-Use executor to send commands to simulator:
-
-```bash
-executor_start(command="build/nuttx")
-executor_send(text="help")
-executor_send(text="ps")
-executor_stop()
-```
+- [NuttX MPS3-AN547](https://nuttx.apache.org/docs/latest/platforms/arm/mps/boards/mps3-an547/index.html)
+- [NuttX QEMU ARMv7-A](https://nuttx.apache.org/docs/latest/platforms/arm/qemu/boards/qemu-armv7a/index.html)
+- [NuttX QEMU ARMv8-A](https://nuttx.apache.org/docs/latest/platforms/arm64/qemu/boards/qemu-armv8a/index.html)
+- [NuttX FVP ARMv8-R](https://nuttx.apache.org/docs/12.8.0/platforms/arm64/fvp-v8r/boards/fvp-armv8r/index.html)
