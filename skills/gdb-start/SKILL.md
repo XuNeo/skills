@@ -1,8 +1,8 @@
 ---
 name: gdb-start
-description: "Start GDB for Vela/NuttX crash dump analysis or live debugging. Supports coredump (*.core), crashlog (*.log), and memory dump (*.bin) files. Uses tmux for GDB process management and nxgdbmcp for AI-controlled debugging via gdbrpc socket."
+description: "Start GDB for Vela/NuttX crash dump analysis or live debugging. Supports coredump (*.core), crashlog (*.log), and memory dump (*.bin) files. Uses tmux for GDB process management and gdbmcp MCP server for AI-controlled debugging via gdbrpc socket."
 license: Apache-2.0
-compatibility: "Requires: tmux skill (preferred) or executor skill (fallback), gdbmcp MCP server. GDB variants: gdb-multiarch, xtensa-esp32s3-elf-gdb, tricore-gdb, or gdb."
+compatibility: "Requires: tmux skill (preferred) or executor skill (fallback), gdbmcp MCP server (https://github.com/suoyuanG/gdbmcp). GDB variants: gdb-multiarch, xtensa-esp32s3-elf-gdb, tricore-gdb, or gdb."
 metadata:
   category: debugging
   platform: vela,nuttx,embedded
@@ -15,11 +15,11 @@ Start GDB session for Vela/NuttX crash dump analysis or live debugging.
 ## Architecture
 
 ```
-tmux ──▶ GDB ──▶ gdbrpc ──▶ nxgdbmcp (AI control)
+tmux ──▶ GDB ──▶ gdbrpc ──▶ gdbmcp (AI control)
 ```
 
 - **Step 1-2 use tmux**: Start GDB, load nxgdb, start gdbrpc
-- **Step 3+ use nxgdbmcp**: All subsequent commands via nxgdbmcp
+- **Step 3+ use gdbmcp**: All subsequent commands via gdbmcp MCP server
 
 ## GDB Variant Selection
 
@@ -52,11 +52,11 @@ If tmux unavailable, refer to **executor skill**.
 
 ---
 
-**From Step 3 onwards, all commands via nxgdbmcp.**
+**From Step 3 onwards, all commands via gdbmcp MCP server.**
 
 ---
 
-### Step 3: nxgdbmcp Connect
+### Step 3: gdbmcp Connect
 
 ```python
 session = mcp_gdbmcp_gdb_connect(port=20819)
@@ -159,7 +159,7 @@ tmux send-keys -t "$SESSION" -- 'gdbrpc start' Enter
 ```
 
 ```python
-# === nxgdbmcp: All subsequent operations ===
+# === gdbmcp: All subsequent operations ===
 session = mcp_gdbmcp_gdb_connect(port=20819)
 sid = session["session_id"]
 
@@ -183,7 +183,7 @@ tmux send-keys -t "$SESSION" -- 'gdbrpc start' Enter
 ```
 
 ```python
-# === nxgdbmcp ===
+# === gdbmcp ===
 session = mcp_gdbmcp_gdb_connect(port=20819)
 sid = session["session_id"]
 
@@ -216,7 +216,7 @@ tmux kill-session -t "$SESSION"
 
 ## Notes
 
-1. **tmux only for startup**, then use nxgdbmcp for commands
+1. **tmux only for startup**, then use gdbmcp for commands
 2. **Dump file recognition**: `.core`, `.log`, AND `.bin` are ALL valid dump files
 3. **Code-tool match**: dev code should not use trunk tools
 4. **GDB version**: 11+ recommended, use prebuilt gdb-multiarch

@@ -2,7 +2,7 @@
 name: crash-analysis
 description: "Systematic NuttX/Vela crash analysis using GDB. Locates crash threads, examines call stacks, inspects memory, and identifies root causes. Requires gdb-start skill for GDB session setup. Use after loading coredump to understand why a program crashed."
 license: Apache-2.0
-compatibility: "Requires: gdb-start skill (for GDB session via nxgdbmcp), nxgdb extension. Read-only analysis - never executes target code."
+compatibility: "Requires: gdb-start skill (for GDB session via gdbmcp), nxgdb extension. Read-only analysis - never executes target code."
 ---
 
 # crash-analysis
@@ -32,7 +32,7 @@ Refer to **gdb-start skill** for complete setup:
 
 ```python
 # 1. Start GDB in tmux and launch gdbrpc
-# 2. Connect via nxgdbmcp
+# 2. Connect via gdbmcp
 session = mcp_gdbmcp_gdb_connect(port=20819)
 sid = session["session_id"]
 

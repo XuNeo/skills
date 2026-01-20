@@ -4,7 +4,7 @@ gdbrpc is a socket server started inside GDB, allowing remote control via socket
 
 ## Overview
 
-gdbrpc runs inside the GDB process, exposing Python API for automation. Combined with nxgdbmcp MCP server, AI can directly control GDB for debugging.
+gdbrpc runs inside the GDB process, exposing Python API for automation. Combined with gdbmcp MCP server (https://github.com/suoyuanG/gdbmcp), AI can directly control GDB for debugging.
 
 ## Architecture
 
@@ -19,7 +19,7 @@ gdbrpc runs inside the GDB process, exposing Python API for automation. Combined
                                  │ socket
                                  ▼
                     ┌─────────────────────────┐
-                    │       nxgdbmcp          │
+                    │        gdbmcp           │
                     │     (MCP server)        │
                     └─────────────────────────┘
                                  │
@@ -40,7 +40,7 @@ gdbrpc runs inside the GDB process, exposing Python API for automation. Combined
 (gdb) gdbrpc status
 ```
 
-### Connect via nxgdbmcp
+### Connect via gdbmcp
 
 ```python
 session = mcp_gdbmcp_gdb_connect(host="localhost", port=20819)
