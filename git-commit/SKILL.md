@@ -11,7 +11,7 @@ Commit changes with automatic code format checking (for supported projects) and 
 
 ## Parameters
 
-- **JIRA number** (optional): Issue number (e.g., `123` or `VELAPLATFO-123`)
+- **JIRA number** (optional): Issue number (e.g., `123` or `PROJECT-123`)
 - **Reference message** (optional): Draft commit message to optimize based on code changes
 
 ## Workflow
@@ -60,7 +60,7 @@ git diff HEAD | tools/checkpatch.sh -
 ```
 <component>: <brief summary under 72 chars>
 
-VELAPLATFO-{JIRA_NUMBER}
+PROJECT-{JIRA_NUMBER}
 
 <detailed description>
 - Analysis of code changes
@@ -119,7 +119,7 @@ EOF
 /git-commit 123
 
 # With JIRA and reference message
-/git-commit VELAPLATFO-456 "fix serial driver bug"
+/git-commit PROJECT-456 "fix serial driver bug"
 
 # Full example
 /git-commit 789 "update UART configuration for higher baud rates"

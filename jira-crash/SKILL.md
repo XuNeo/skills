@@ -1,17 +1,17 @@
 ---
-name: vela-jira
-description: "Fetch Vela crash information from Jira issues, extract crash platform links from comments, download ELF/coredump/log files using playwright browser automation, and organize files for GDB debugging. Supports multiple cores (ap, cp, sensor, audio) and auto-detects latest crash from tool comments."
+name: jira-crash
+description: "Fetch crash information from Jira issues, extract crash platform links from comments, download ELF/coredump/log files using playwright browser automation, and organize files for GDB debugging. Supports multiple cores (ap, cp, sensor, audio) and auto-detects latest crash from tool comments."
 license: Apache-2.0
-compatibility: "Requires Jira MCP server (mi-jira), playwright MCP server with proxy for internal network access. Optional: executor MCP for GDB sessions."
+compatibility: "Requires Jira MCP server, playwright MCP server with proxy for internal network access. Optional: executor MCP for GDB sessions."
 ---
 
-# jira-analysis
+# jira-crash
 
-Fetch Vela crash information from Jira issues and download debug files from crash analysis platform using playwright browser automation.
+Fetch crash information from Jira issues and download debug files from crash analysis platform using playwright browser automation.
 
 ## When to Use
 
-- Analyze Vela crash issues from Jira
+- Analyze crash issues from Jira
 - Download ELF, coredump, and log files from crash analysis platform
 - Fetch crash files for multiple cores (ap, cp, sensor, audio)
 
@@ -19,10 +19,10 @@ Fetch Vela crash information from Jira issues and download debug files from cras
 
 **Required:**
 
-- Jira MCP server (`mi-jira`) - Fetch Jira issue information
+- Jira MCP server - Fetch Jira issue information
 - Playwright MCP server - Browser automation for crash platform access
 
-**Playwright configuration requires internal network proxy:**
+**Playwright configuration (with proxy if needed):**
 
 ```json
 "playwright": {
@@ -38,7 +38,7 @@ Fetch Vela crash information from Jira issues and download debug files from cras
 Use `mcp_mi_jira_jira_get_issue` to get issue details:
 
 ```
-issue_key: "VELAPLATFO-XXXXX"
+issue_key: "PROJECT-XXXXX"
 fields: "summary,description,status,assignee,reporter,issuetype,created,priority,labels"
 comment_limit: 20
 ```
@@ -55,7 +55,7 @@ comment_limit: 20
 **From description:**
 
 ```
-Crash report link format: http://vela.pt.xiaomi.srv/vela_crash_report?id=XXXXXX
+Crash report link format: http://crash.example.internal/crash_report?id=XXXXXX
 ```
 
 **From comments (important):**
@@ -67,20 +67,20 @@ Tools automatically comment new identical crash information to Jira. Check recen
 
 **Identifying tool auto-comment characteristics:**
 
-- Comment content contains `vela_crash_report?id=` link
+- Comment content contains `crash_report?id=` link
 - Comment format is typically structured crash information
 
 ### Step 3: Access Crash Platform Using Playwright
 
 ```
-mcp_playwright_browser_navigate: http://vela.pt.xiaomi.srv/vela_crash_report?id={crash_id}
+mcp_playwright_browser_navigate: http://crash.example.internal/crash_report?id={crash_id}
 ```
 
 **Authentication handling:**
 
-- First access may redirect to CAS login page
-- If Mier intermediate page appears, click "Click to continue accessing the intranet system"
-- Use `mcp_playwright_browser_take_screenshot` to capture QR code for user scanning
+- First access may redirect to SSO login page
+- If intermediate page appears, click "Continue to access"
+- Use `mcp_playwright_browser_take_screenshot` to capture QR code for user scanning with authenticator app
 
 ### Step 4: Extract Download Links
 
@@ -95,9 +95,9 @@ Identify available core types from page (via tab labels):
 **URL patterns:**
 
 ```
-ELF:  https://cnbj1-fds.api.xiaomi.net/vela-crash-log3/{crash_id}/{core}/vela_{core}.elf
-Dump: https://cnbj1-fds.api.xiaomi.net/vela-crash-log3/{crash_id}/{core}/*.bin
-Log:  https://cnbj1-fds.api.xiaomi.net/vela-crash-log3/{crash_id}/{core}/full_run.log
+ELF:  https://storage.example.internal/crash-logs/{crash_id}/{core}/firmware_{core}.elf
+Dump: https://storage.example.internal/crash-logs/{crash_id}/{core}/*.bin
+Log:  https://storage.example.internal/crash-logs/{crash_id}/{core}/full_run.log
 ```
 
 ### Step 5: Download Files to Local Directory
@@ -107,11 +107,11 @@ Log:  https://cnbj1-fds.api.xiaomi.net/vela-crash-log3/{crash_id}/{core}/full_ru
 ```
 ./crash-{crash_id}/
 ├── ap/
-│   ├── vela_ap.elf
+│   ├── firmware_ap.elf
 │   ├── 0-0x40000000.bin
 │   └── full_run.log
 ├── cp/
-│   ├── vela_cp.elf
+│   ├── firmware_cp.elf
 │   ├── *.bin
 │   └── full_run.log
 ├── sensor/
@@ -124,7 +124,7 @@ Log:  https://cnbj1-fds.api.xiaomi.net/vela-crash-log3/{crash_id}/{core}/full_ru
 
 ```bash
 mkdir -p ./crash-{crash_id}/{core}
-curl -L -o ./crash-{crash_id}/{core}/vela_{core}.elf "{elf_url}"
+curl -L -o ./crash-{crash_id}/{core}/firmware_{core}.elf "{elf_url}"
 curl -L -o ./crash-{crash_id}/{core}/{dump_filename} "{dump_url}"
 curl -L -o ./crash-{crash_id}/{core}/full_run.log "{log_url}"
 ```
@@ -147,7 +147,7 @@ Never use existing local files or files from other directories
 **User request:**
 
 ```
-Analyze crash issue VELAPLATFO-81717
+Analyze crash issue PROJECT-12345
 ```
 
 **Execution flow:**
@@ -155,7 +155,7 @@ Analyze crash issue VELAPLATFO-81717
 1. Get Jira issue:
 
 ```
-mcp_mi_jira_jira_get_issue(issue_key="VELAPLATFO-81717", fields="summary,description,status", comment_limit=20)
+mcp_mi_jira_jira_get_issue(issue_key="PROJECT-12345", fields="summary,description,status", comment_limit=20)
 ```
 
 1. Extract crash_id from description or latest comment: `303533`
@@ -163,7 +163,7 @@ mcp_mi_jira_jira_get_issue(issue_key="VELAPLATFO-81717", fields="summary,descrip
 2. Access crash platform:
 
 ```
-mcp_playwright_browser_navigate(url="http://vela.pt.xiaomi.srv/vela_crash_report?id=303533")
+mcp_playwright_browser_navigate(url="http://crash.example.internal/crash_report?id=303533")
 ```
 
 1. Get page snapshot to extract download links:
@@ -176,9 +176,9 @@ mcp_playwright_browser_snapshot()
 
 ```bash
 mkdir -p ./crash-303533/ap
-curl -L -o ./crash-303533/ap/vela_ap.elf "https://cnbj1-fds.api.xiaomi.net/vela-crash-log3/303533/ap/vela_ap.elf"
-curl -L -o ./crash-303533/ap/0-0x40000000.bin "https://cnbj1-fds.api.xiaomi.net/vela-crash-log3/303533/ap/0-0x40000000.bin"
-curl -L -o ./crash-303533/ap/full_run.log "https://cnbj1-fds.api.xiaomi.net/vela-crash-log3/303533/ap/full_run.log"
+curl -L -o ./crash-303533/ap/firmware_ap.elf "https://storage.example.internal/crash-logs/303533/ap/firmware_ap.elf"
+curl -L -o ./crash-303533/ap/0-0x40000000.bin "https://storage.example.internal/crash-logs/303533/ap/0-0x40000000.bin"
+curl -L -o ./crash-303533/ap/full_run.log "https://storage.example.internal/crash-logs/303533/ap/full_run.log"
 ```
 
 ### Example 2: Multi-Core Crash
@@ -191,8 +191,8 @@ curl -L -o ./crash-303533/ap/full_run.log "https://cnbj1-fds.api.xiaomi.net/vela
 # Download all available cores
 for core in ap cp sensor audio; do
   mkdir -p ./crash-{crash_id}/$core
-  curl -L -f -o ./crash-{crash_id}/$core/vela_$core.elf \
-    "https://cnbj1-fds.api.xiaomi.net/vela-crash-log3/{crash_id}/$core/vela_$core.elf" || true
+  curl -L -f -o ./crash-{crash_id}/$core/firmware_$core.elf \
+    "https://storage.example.internal/crash-logs/{crash_id}/$core/firmware_$core.elf" || true
 done
 ```
 
@@ -203,7 +203,7 @@ done
 **Processing logic:**
 
 1. Get recent 20 comments
-2. Filter comments containing `vela_crash_report?id=`
+2. Filter comments containing `crash_report?id=`
 3. Take crash_id from the latest matching comment
 4. Download files for that crash
 
@@ -211,10 +211,10 @@ done
 
 ### Login Issues
 
-If redirected to CAS login page:
+If redirected to SSO login page:
 
 1. Screenshot to display QR code
-2. User scans with Mier App
+2. User scans with authenticator app
 3. Continue after successful login
 
 ### File Not Found
@@ -238,7 +238,7 @@ After download, use `crash-analysis` skill or `gdb-start` skill for debugging:
 
 ```bash
 # Start GDB
-gdb-multiarch ./crash-{crash_id}/ap/vela_ap.elf
+gdb-multiarch ./crash-{crash_id}/ap/firmware_ap.elf
 
 # Import nxgdb
 (gdb) py import nxgdb
@@ -251,10 +251,10 @@ gdb-multiarch ./crash-{crash_id}/ap/vela_ap.elf
 
 | Resource Type | URL Pattern |
 |---------------|-------------|
-| Crash Report Page | `http://vela.pt.xiaomi.srv/vela_crash_report?id={crash_id}` |
-| ELF File | `https://cnbj1-fds.api.xiaomi.net/vela-crash-log3/{crash_id}/{core}/vela_{core}.elf` |
-| Coredump | `https://cnbj1-fds.api.xiaomi.net/vela-crash-log3/{crash_id}/{core}/*.bin` |
-| Run Log | `https://cnbj1-fds.api.xiaomi.net/vela-crash-log3/{crash_id}/{core}/full_run.log` |
+| Crash Report Page | `http://crash.example.internal/crash_report?id={crash_id}` |
+| ELF File | `https://storage.example.internal/crash-logs/{crash_id}/{core}/firmware_{core}.elf` |
+| Coredump | `https://storage.example.internal/crash-logs/{crash_id}/{core}/*.bin` |
+| Run Log | `https://storage.example.internal/crash-logs/{crash_id}/{core}/full_run.log` |
 
 ## Notes
 

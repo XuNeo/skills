@@ -1,13 +1,13 @@
 ---
-name: x4b-device
-description: Operate X4B real hardware device including firmware download, flashing via fastboot, adb control, serial monitoring via minicom, and JLink debugging. Integrates with vela-jira for firmware retrieval and gdb-start for debugging.
+name: device-4b
+description: "Operate Device 4B hardware including firmware download, flashing via fastboot, adb control, serial monitoring via minicom, and JLink debugging. Use when working with Device 4B or 4b device. Integrates with jira-crash for firmware retrieval and gdb-start for debugging."
 license: MIT
 compatibility: Requires fastboot, adb, minicom, JLinkGDBServer. Linux environment with USB access.
 ---
 
-# X4B Device Skill
+# Device 4B Skill
 
-Operate X4B real hardware device for firmware flashing, debugging, and monitoring.
+Operate Device 4B hardware for firmware flashing, debugging, and monitoring.
 
 ## Workflow Overview
 
@@ -24,41 +24,41 @@ Operate X4B real hardware device for firmware flashing, debugging, and monitorin
 | Interactive sessions | **tmux skill** | User needs to interact with device/console |
 | Automated operations | **executor skill** | Fully automated tasks without interaction |
 | GDB debugging | **gdb-start skill** | Connect to JLink GDB server |
-| Get firmware URL | **vela-jira skill** | Retrieve firmware from JIRA issue |
+| Get firmware URL | **jira-crash skill** | Retrieve firmware from JIRA issue |
 
 ## Firmware Acquisition
 
 ### From JIRA (Recommended)
 
-**Use the vela-jira skill** to get firmware URL from JIRA issue description.
+**Use the jira-crash skill** to get firmware URL from JIRA issue description.
 
 Firmware URL pattern:
 ```
-https://cnbj1-fds.api.xiaomi.net/vela-ci/Vela-x4b-dev-system-CI/{build_number}/{timestamp}.tar.gz
+https://storage.example.internal/ci-artifacts/{project}-CI/{build_number}/{timestamp}.tar.gz
 ```
 
 Example:
 ```
-https://cnbj1-fds.api.xiaomi.net/vela-ci/Vela-x4b-dev-system-CI/16807/2026011909541.tar.gz
+https://storage.example.internal/ci-artifacts/embedded-dev-system-CI/16807/2026011909541.tar.gz
 ```
 
 ### Download and Extract
 
 ```bash
 # Download
-wget -O x4b-firmware.tar.gz "{firmware_url}"
+wget -O firmware.tar.gz "{firmware_url}"
 
 # Extract
 mkdir -p ~/tmp/{timestamp}/images
-tar -xzf x4b-firmware.tar.gz -C ~/tmp/{timestamp}/images/
+tar -xzf firmware.tar.gz -C ~/tmp/{timestamp}/images/
 ```
 
 ## Firmware Directory Structure
 
-After extraction, the x4b image directory contains:
+After extraction, the image directory contains:
 
 ```
-x4b/
+firmware/
 ├── image_nokasan/         # Combined flash image (default) - FLASHABLE
 │   ├── vela_res.bin       # Resource partition image (fastboot flashable)
 │   ├── vela_tee.bin       # TEE partition image (fastboot flashable)
@@ -79,7 +79,7 @@ x4b/
 │   ├── vela_tee.elf       # ELF with debug symbols (for GDB)
 │   └── vela_tee.bin       # Binary image
 ├── ota/                   # OTA firmware - DEBUG ONLY
-└── x4b.build_cmd          # Build commands reference
+└── build_cmd              # Build commands reference
 ```
 
 ### Important Notes
@@ -250,8 +250,6 @@ Common serial ports:
 
 ### Start JLink GDB Server
 
-X4B uses R528S3 dual-core ARM processor.
-
 Connect to Core 0 (AP):
 ```bash
 JLinkGDBServer -if JTAG -speed 1000KHZ -device R528S3-CORE0 -port 23331
@@ -292,7 +290,7 @@ GDB target:
 ### Flash and Boot
 
 ```bash
-# 1. Download firmware (get URL from JIRA via vela-jira skill)
+# 1. Download firmware (get URL from JIRA via jira-crash skill)
 wget -O fw.tar.gz "{url}"
 tar -xzf fw.tar.gz
 
@@ -301,8 +299,8 @@ adb reboot bootloader
 # Or from device shell: reboot bootloader
 
 # 3. Flash (use image_nokasan by default)
-fastboot flash res x4b/image_nokasan/vela_res.bin
-fastboot flash tee x4b/image_nokasan/vela_tee.bin
+fastboot flash res firmware/image_nokasan/vela_res.bin
+fastboot flash tee firmware/image_nokasan/vela_tee.bin
 fastboot reboot
 
 # 4. Verify
@@ -318,7 +316,7 @@ JLinkGDBServer -if JTAG -speed 1000KHZ -device R528S3-CORE0 -port 2331
 
 # 2. Connect GDB (use gdb-start skill)
 # Target: localhost:2331
-# ELF: x4b/ap/vela_ap.elf
+# ELF: firmware/ap/vela_ap.elf
 ```
 
 ### Serial Monitor

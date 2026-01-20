@@ -141,7 +141,7 @@ vendor/<vendor>/boards/<chip>/[.../<subdir>]/<board>/
 
 Examples:
 ```
-vendor/allwinnertech/boards/r528/r528s3-x4b/configs/ap/defconfig
+vendor/allwinnertech/boards/r528/board-a/configs/ap/defconfig
 vendor/bes/boards/best2003_ep/evb/configs/ap/defconfig
 vendor/bes/boards/best2003_ep/evb/configs/audio/defconfig
 ```
@@ -168,4 +168,4 @@ export V=1
 - Use `hmm` to see all available commands
 - Use `clunch` to check current lunch configuration
 - Use `deactivate` to restore original environment
-- Non-CMake configs (e.g., x4b, smartspeaker) will fallback to Makefile build automatically
+- Non-CMake configs will fallback to Makefile build automatically
