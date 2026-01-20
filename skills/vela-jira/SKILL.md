@@ -18,10 +18,12 @@ Fetch Vela crash information from Jira issues and download debug files from cras
 ## Prerequisites
 
 **Required:**
+
 - Jira MCP server (`mi-jira`) - Fetch Jira issue information
 - Playwright MCP server - Browser automation for crash platform access
 
 **Playwright configuration requires internal network proxy:**
+
 ```json
 "playwright": {
   "command": "npx",
@@ -42,6 +44,7 @@ comment_limit: 20
 ```
 
 **Extract key information:**
+
 - summary: Issue title
 - description: Issue description containing crash report link
 - status: Current status
@@ -50,6 +53,7 @@ comment_limit: 20
 ### Step 2: Extract Crash Platform Link
 
 **From description:**
+
 ```
 Crash report link format: http://vela.pt.xiaomi.srv/vela_crash_report?id=XXXXXX
 ```
@@ -57,10 +61,12 @@ Crash report link format: http://vela.pt.xiaomi.srv/vela_crash_report?id=XXXXXX
 **From comments (important):**
 
 Tools automatically comment new identical crash information to Jira. Check recent comments:
+
 - If multiple crashes are auto-commented by tools, get the crash link from the **latest comment**
 - If no tool comments exist, use crash information from the main issue description
 
 **Identifying tool auto-comment characteristics:**
+
 - Comment content contains `vela_crash_report?id=` link
 - Comment format is typically structured crash information
 
@@ -71,6 +77,7 @@ mcp_playwright_browser_navigate: http://vela.pt.xiaomi.srv/vela_crash_report?id=
 ```
 
 **Authentication handling:**
+
 - First access may redirect to CAS login page
 - If Mier intermediate page appears, click "Click to continue accessing the intranet system"
 - Use `mcp_playwright_browser_take_screenshot` to capture QR code for user scanning
@@ -78,6 +85,7 @@ mcp_playwright_browser_navigate: http://vela.pt.xiaomi.srv/vela_crash_report?id=
 ### Step 4: Extract Download Links
 
 Identify available core types from page (via tab labels):
+
 - **ap** - Application Processor (most common)
 - **cp** - Communication Processor
 - **sensor** - Sensor Hub
@@ -85,6 +93,7 @@ Identify available core types from page (via tab labels):
 - **tee** - Trusted Execution Environment
 
 **URL patterns:**
+
 ```
 ELF:  https://cnbj1-fds.api.xiaomi.net/vela-crash-log3/{crash_id}/{core}/vela_{core}.elf
 Dump: https://cnbj1-fds.api.xiaomi.net/vela-crash-log3/{crash_id}/{core}/*.bin
@@ -94,6 +103,7 @@ Log:  https://cnbj1-fds.api.xiaomi.net/vela-crash-log3/{crash_id}/{core}/full_ru
 ### Step 5: Download Files to Local Directory
 
 **Directory structure:**
+
 ```
 ./crash-{crash_id}/
 ├── ap/
@@ -111,6 +121,7 @@ Log:  https://cnbj1-fds.api.xiaomi.net/vela-crash-log3/{crash_id}/{core}/full_ru
 ```
 
 **Download commands:**
+
 ```bash
 mkdir -p ./crash-{crash_id}/{core}
 curl -L -o ./crash-{crash_id}/{core}/vela_{core}.elf "{elf_url}"
@@ -121,15 +132,20 @@ curl -L -o ./crash-{crash_id}/{core}/full_run.log "{log_url}"
 ## Output
 
 After successful execution:
+
 - Downloaded file paths
 - Crash basic information (product, branch, crash type)
 - Command hints for GDB analysis
+
+If any download fails: **STOP and ask user** - do not proceed
+Never use existing local files or files from other directories
 
 ## Examples
 
 ### Example 1: Standard Jira Crash Analysis
 
 **User request:**
+
 ```
 Analyze crash issue VELAPLATFO-81717
 ```
@@ -137,23 +153,27 @@ Analyze crash issue VELAPLATFO-81717
 **Execution flow:**
 
 1. Get Jira issue:
+
 ```
 mcp_mi_jira_jira_get_issue(issue_key="VELAPLATFO-81717", fields="summary,description,status", comment_limit=20)
 ```
 
-2. Extract crash_id from description or latest comment: `303533`
+1. Extract crash_id from description or latest comment: `303533`
 
-3. Access crash platform:
+2. Access crash platform:
+
 ```
 mcp_playwright_browser_navigate(url="http://vela.pt.xiaomi.srv/vela_crash_report?id=303533")
 ```
 
-4. Get page snapshot to extract download links:
+1. Get page snapshot to extract download links:
+
 ```
 mcp_playwright_browser_snapshot()
 ```
 
-5. Download AP core files:
+1. Download AP core files:
+
 ```bash
 mkdir -p ./crash-303533/ap
 curl -L -o ./crash-303533/ap/vela_ap.elf "https://cnbj1-fds.api.xiaomi.net/vela-crash-log3/303533/ap/vela_ap.elf"
@@ -166,6 +186,7 @@ curl -L -o ./crash-303533/ap/full_run.log "https://cnbj1-fds.api.xiaomi.net/vela
 **Scenario:** Jira comments contain multiple crashes, need to download files for multiple cores
 
 **Execution:**
+
 ```bash
 # Download all available cores
 for core in ap cp sensor audio; do
@@ -180,6 +201,7 @@ done
 **Scenario:** Jira has multiple tool auto-commented crashes
 
 **Processing logic:**
+
 1. Get recent 20 comments
 2. Filter comments containing `vela_crash_report?id=`
 3. Take crash_id from the latest matching comment
@@ -188,19 +210,25 @@ done
 ## Error Handling
 
 ### Login Issues
+
 If redirected to CAS login page:
+
 1. Screenshot to display QR code
 2. User scans with Mier App
 3. Continue after successful login
 
 ### File Not Found
+
 Some cores may not have crash files, use `curl -f` to ignore 404 errors:
+
 ```bash
 curl -L -f -o file.elf "url" || echo "File not found, skipping"
 ```
 
 ### Incomplete Coredump
+
 Page may show "coredump incomplete, requires manual analysis":
+
 - Still download available dump files
 - Analyze with `full_run.log`
 
