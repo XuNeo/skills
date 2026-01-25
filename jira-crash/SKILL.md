@@ -84,6 +84,9 @@ mcp_playwright_browser_navigate: http://crash.example.internal/crash_report?id={
 
 ### Step 4: Extract Download Links
 
+**IMPORTANT**: Do NOT guess download URLs based on patterns.
+Always extract actual download links from the crash platform page snapshot.
+
 Identify available core types from page (via tab labels):
 
 - **ap** - Application Processor (most common)
