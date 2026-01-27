@@ -92,9 +92,10 @@ To fetch the code for a specific patch set:
 git fetch {REMOTE} refs/changes/{XX}/{CHANGE_NUMBER}/{PATCH_SET_NUMBER}
 ```
 
-- XX is the last two digits of the change number (e.g., for 12345, XX = 45)
-- CHANGE_NUMBER is the full change number
-- PATCH_SET_NUMBER is the specific patch set number (use latest_patchset from get_comments output)
+- `{REMOTE}`: The remote name pointing to the Gerrit server. This is NOT always `origin`. Use `git remote -v` to check the correct remote name for your repository.
+- `{XX}`: The last two digits of the change number (e.g., for 12345, XX = 45)
+- `{CHANGE_NUMBER}`: The full change number
+- `{PATCH_SET_NUMBER}`: The specific patch set number (use latest_patchset from get_comments output)
 
 ## Environment
 
